@@ -27,28 +27,50 @@
                 android:onClick="stopTracking"
                 android:text="Stop" />
         </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Maximum Frequency" />
+
+            <TextView
+                android:id="@+id/breathRateTxt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="" />
+        </LinearLayout>
+
         <ScrollView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="5dp">
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:orientation="vertical">
+
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Accelerometer Data"/>
+                    android:text="Accelerometer Data" />
 
                 <com.github.mikephil.charting.charts.LineChart
                     android:id="@+id/dataGraph"
                     android:layout_width="match_parent"
                     android:layout_height="300dp"
-                    android:layout_marginBottom="10dp"/>
+                    android:layout_marginBottom="10dp" />
+
                 <TextView
+                    android:id="@+id/maxFreq"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="FFT Chart"/>
+                    android:text="FFT Chart" />
+
                 <com.github.mikephil.charting.charts.LineChart
                     android:id="@+id/fftGraph"
                     android:layout_width="match_parent"

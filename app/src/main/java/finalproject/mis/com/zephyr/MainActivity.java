@@ -20,18 +20,23 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.TextView;
 
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.Description;
 import com.github.mikephil.charting.data.Entry;
 import com.github.mikephil.charting.data.LineData;
 import com.github.mikephil.charting.data.LineDataSet;
+import com.kircherelectronics.fsensor.filter.averaging.LowPassFilter;
+import com.kircherelectronics.fsensor.filter.averaging.MeanFilter;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
+
+import static android.hardware.SensorManager.SENSOR_DELAY_NORMAL;
 
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
@@ -44,20 +49,26 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private List<Entry> yValueList;
     private List<Entry> zValueList;
     private List<Entry> magnitudeList;
-    private static int chartListSize = 200;
     private int sampleRate, wSize, axisEntryIndex, magnitudeIndex;
     private double[] magnitudeArray;
     private Boolean isTrackingOn;
     Button btnStart, btnStop;
     Timer stopTimer;
     Handler stopHandler;
-    static final float timeConstant = 0.18f;
-    private float alpha = 0.1f;
-    private float timestamp = System.nanoTime();
-    private float timestampOld = System.nanoTime();
-    private float[] gravity = new float[]{ 0, 0, 0 };
+
     private float[] linearAcceleration = new float[]{ 0, 0, 0 };
-    private int count = 0;
+
+    //------------------------------------KalebKE/FSensor-----------------------------------------------
+    private MeanFilter meanFilter;
+    private LowPassFilter lpfAccelerationSmoothing;
+    //------------------------------------KalebKE/FSensor-----------------------------------------------
+
+//    private int count = 0;
+//    static final float timeConstant = 0.18f;
+//    private float alpha;
+//    private float timestamp = System.nanoTime();
+//    private float timestampOld = System.nanoTime();
+//    private float[] gravity = new float[]{ 0, 0, 0 };
 
 
     @Override
@@ -100,15 +111,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 //        }, 15000);
 
         stopHandler = new Handler();
-//        stopHandler.postDelayed(new Runnable(){
-//
-//            @Override
-//            public void run() {
-//                // This method will be executed once the timer is over
-//                Log.d("In stopHandler Run" , "****************");
-//                reInitialiseChart();
-//            }
-//        },60000);// set time as per your requirement
+        stopHandler.postDelayed(new Runnable(){
+
+            @Override
+            public void run() {
+                // This method will be executed once the timer is over
+                Log.d("In stopHandler Run" , "****************");
+                reInitialiseChart();
+            }
+        },60000);// set time as per your requirement
     }
 
 
@@ -135,8 +146,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     Check for permissions, if not present ask for permission
      */
     public void inititalise(){
-        sampleRate = 1000000; //in microseconds = 1 seconds
-        wSize = 64;
+        sampleRate = 5000000; //in microseconds = 1 seconds
+        wSize = 128;
+        lpfAccelerationSmoothing = new LowPassFilter();
+        lpfAccelerationSmoothing.setTimeConstant(0.2f);
+        meanFilter = new MeanFilter();
+        meanFilter.setTimeConstant(0.8f);
         getSensorData();
     }
 
@@ -160,7 +175,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         if (mSensorManager != null
                 && mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null){
             mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            mSensorManager.registerListener(this, mSensor, sampleRate);
+            mSensorManager.registerListener(this, mSensor, SENSOR_DELAY_NORMAL);//sampleRate);
             return true;
         }
         return false;
@@ -180,39 +195,24 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
+    /*
+        @Purpose: To initially remove gravity and remove noise to make a smooth signal
+     */
+    public float[] filterData(float[] input){
 
-
-    public float[] LowPass(float[] input)
-    {
-        timestamp = System.nanoTime();
-        float dt;
-        // Find the sample period (between updates).
-        // Convert from nanoseconds to seconds
-        dt = 1 / (count / ((timestamp - timestampOld) / 1000000000.0f));
-
-        count++;
-
-        alpha = timeConstant / (timeConstant + dt);
-
-        // Calculate alpha
-        //alpha = dt/(timeConstant + dt);
-
-        gravity[0] = alpha * gravity[0] + (1 - alpha) * input[0];
-        gravity[1] = alpha * gravity[1] + (1 - alpha) * input[1];
-        gravity[2] = alpha * gravity[2] + (1 - alpha) * input[2];
-
-        linearAcceleration[0] = input[0] - gravity[0];
-        linearAcceleration[1] = input[1] - gravity[1];
-        linearAcceleration[2] = input[2] - gravity[2];
-
-        return linearAcceleration;
-
-        // Update the filter
-        // y[i] = y[i] + alpha * (x[i] - y[i])
-//        output[0] = output[0] + alpha * (input[0] - output[0]);
-//        output[1] = output[1] + alpha * (input[1] - output[1]);
-//        output[2] = output[2] + alpha * (input[2] - output[2]);
+        float[] acceleration = new float[3];
+        //System.arraycopy(event.values, 0, acceleration, 0, event.values.length);
+        Log.d("Input:" , String.valueOf(input));
+        //acceleration = input;
+        acceleration = lpfAccelerationSmoothing.filter(input);
+        acceleration = meanFilter.filter(acceleration);
+//        Log.d("meanFilter:" , String.valueOf(acceleration));
+//        Log.d("Filter 0:" , String.valueOf(acceleration[0]));
+//        Log.d("Filter 1::" , String.valueOf(acceleration[1]));
+//        Log.d("Filter 2:::" , String.valueOf(acceleration[2]));
+        return acceleration;
     }
+
 
     /*
         @Purpose: To plot data from accelerometer in grap-view
@@ -221,52 +221,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         float x,y,z,magnitude;
 
-        float alpha = (float)0.5;
-//        x = event.values[0] - (alpha * mSensorManager.GRAVITY_EARTH + (1 - alpha) * event.values[0]);
-//        y = event.values[1] - (alpha * mSensorManager.GRAVITY_EARTH + (1 - alpha) * event.values[1]);
-//        z = event.values[2] - (alpha * mSensorManager.GRAVITY_EARTH + (1 - alpha) * event.values[2]);
-//        x = event.values[0];
-//        y = event.values[1];
-//        z = event.values[2];
-
-//        x = x + alpha * ( event.values[0] - x );
-//        y = y + alpha * ( event.values[1] - y );
-//        z = z + alpha * ( event.values[2] - z );
-
         float[] input = { event.values[0], event.values[1], event.values[2]};
-        float output[] = LowPass(input);
-        Log.d("Output Array 1" , String.valueOf(output[0]));
-        Log.d("Output Array 2" , String.valueOf(output[1]));
-        Log.d("Output Array 3" , String.valueOf(output[2]));
+        float output[] = filterData(input);
         x = output[0];
         y = output[1];
         z = output[2];
 
         magnitude = (float) Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2) + Math.pow(z, 2));
 
-//        if(xValueList.size() >= chartListSize)
-//            xValueList.remove(0);
-//        if(yValueList.size() >= chartListSize)
-//            yValueList.remove(0);
-//        if(zValueList.size() >= chartListSize)
-//            zValueList.remove(0);
-//        if( magnitudeList.size() >= chartListSize)
-//            magnitudeList.remove(0);
-//
-//        if( magnitudeIndex < magnitudeArray.length){
-//            if(magnitudeArray.length <= wSize){
-//                magnitudeArray[magnitudeIndex] =  magnitude;
-//                magnitudeIndex++;
-//            }
-//        }
-//        else{
-//            magnitudeIndex = 0;
-//            magnitudeArray = new double[wSize];
-//        }
-
         magnitudeArray[magnitudeIndex] =  magnitude;
         magnitudeIndex++;
-        Log.d("*******axisEntryIndex: " , String.valueOf(axisEntryIndex));
         axisEntryIndex += 1;
         xValueList.add( new Entry( axisEntryIndex, x));
         yValueList.add( new Entry( axisEntryIndex, y));
@@ -284,7 +248,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         lineData.addDataSet(addLineData( xValueList, "X" , Color.RED));
         lineData.addDataSet(addLineData( yValueList, "Y" , Color.GREEN ));
         lineData.addDataSet(addLineData( zValueList, "Z" , Color.BLUE));
-        //lineData.addDataSet(addLineData( magnitudeList, "Magnitude" , Color.WHITE));
+        lineData.addDataSet(addLineData( magnitudeList, "Magnitude" , Color.WHITE));
         graph.setBackgroundColor(Color.DKGRAY);
         graph.setGridBackgroundColor(Color.BLACK);
         graph.setData(lineData);
@@ -297,8 +261,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     public void updateFFTChart(){
         LineChart fftGraph = (LineChart) findViewById(R.id.fftGraph);
         List<Entry> magnitudeEntryList = new ArrayList<>();
+        Double maxFreqCount = 0.0;
         for (int i = 0; i < freqCounts.length; i++){
             magnitudeEntryList.add( new Entry(i, (float) freqCounts[i]));
+            if( maxFreqCount < freqCounts[i]){
+                maxFreqCount = freqCounts[i];
+            }
         }
         LineData lineData = new LineData();
         lineData.addDataSet(addLineData( magnitudeEntryList, "X" , Color.BLACK));
@@ -306,6 +274,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         fftGraph.notifyDataSetChanged();
         fftGraph.invalidate();
         fftGraph.setDescription(new Description());
+        reInitialiseChart();
+        Log.d("Max Freq is in Hz: " , String.valueOf(maxFreqCount));
+
+        //Breath rate estimator
+//        Integer bpm;
+//        Integer maxFreqCount1 = Math.ceil((maxFreqCount));
+//        bpm = (Integer) maxFreqCount1 * 60;
+//        Log.d("BPM " , String.valueOf(bpm));
+        TextView bpmTxt = (TextView) findViewById(R.id.breathRateTxt);
+        bpmTxt.setText(String.valueOf(maxFreqCount));
     }
 
     /*
@@ -382,13 +360,38 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
     }
 
-    /**
-     * little helper function to fill example with random double values
-     */
-    public void randomFill(double[] array){
-        Random rand = new Random();
-        for(int i = 0; array.length > i; i++){
-            array[i] = rand.nextDouble();
-        }
-    }
+//    public float[] filterData(float[] input)
+//    {
+//        timestamp = System.nanoTime();
+//        float dt;
+//        // Find the sample period (between updates).
+//        // Convert from nanoseconds to seconds
+//        dt = 1 / (count / ((timestamp - timestampOld) / 1000000000.0f));
+//
+//        count++;
+//
+//        //alpha = (float)0.5;
+//
+//        alpha = timeConstant / (timeConstant + dt);
+//        Log.d("alpha" , String.valueOf(alpha));
+//
+//        // Calculate alpha
+//        //alpha = 0.1f;
+//
+//        gravity[0] = alpha * gravity[0] + (1 - alpha) * input[0];
+//        gravity[1] = alpha * gravity[1] + (1 - alpha) * input[1];
+//        gravity[2] = alpha * gravity[2] + (1 - alpha) * input[2];
+//        Log.d("Gravity 1" , String.valueOf(gravity[0]));
+//        Log.d("Gravity 2" , String.valueOf(gravity[1]));
+//        Log.d("Gravity 3" , String.valueOf(gravity[2]));
+//
+//        linearAcceleration[0] = input[0] - gravity[0];
+//        linearAcceleration[1] = input[1] - gravity[1];
+//        linearAcceleration[2] = input[2] - gravity[2];
+//
+////        linearAcceleration[0] = input[0];
+////        linearAcceleration[1] = input[1];
+////        linearAcceleration[2] = input[2];
+//        return linearAcceleration;
+//    }
 }
