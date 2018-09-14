@@ -49,9 +49,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private List<Entry> yValueList;
     private List<Entry> zValueList;
     private List<Entry> magnitudeList;
-    private int sampleRate, wSize, axisEntryIndex, magnitudeIndex;
+    private int sampleRate, wSize, axisEntryIndex, magnitudeIndex,doContinueLessThan10;
     private double[] magnitudeArray;
     private Boolean isTrackingOn;
+    private long lastUpdate = 0;
     Button btnStart, btnStop;
     Timer stopTimer;
     Handler stopHandler;
@@ -85,6 +86,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     public void startTracking( View view){
         axisEntryIndex = 0;
         magnitudeIndex = 0;
+        doContinueLessThan10 = 0;
         xValueList = new ArrayList<>();
         yValueList = new ArrayList<>();
         zValueList = new ArrayList<>();
@@ -93,14 +95,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         btnStart.setEnabled(false);
         btnStop.setEnabled(true);
+        isTrackingOn = true;
 
-
-        new Handler().postDelayed(new Runnable(){
-            @Override
-            public void run() {
-                isTrackingOn = true;
-            }
-        }, 1000);
+//        new Handler().postDelayed(new Runnable(){
+//            @Override
+//            public void run() {
+//                isTrackingOn = true;
+//            }
+//        }, 1000);
 
 //        stopTimer = new Timer();
 //        stopTimer.schedule(new TimerTask() {
@@ -110,16 +112,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 //            }
 //        }, 15000);
 
-        stopHandler = new Handler();
-        stopHandler.postDelayed(new Runnable(){
-
-            @Override
-            public void run() {
-                // This method will be executed once the timer is over
-                Log.d("In stopHandler Run" , "****************");
-                reInitialiseChart();
-            }
-        },60000);// set time as per your requirement
+//        stopHandler = new Handler();
+//        stopHandler.postDelayed(new Runnable(){
+//
+//            @Override
+//            public void run() {
+//                // This method will be executed once the timer is over
+//                Log.d("In stopHandler Run" , "****************");
+//                reInitialiseChart();
+//            }
+//        },60000);// set time as per your requirement
     }
 
 
@@ -127,7 +129,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 //        if( stopTimer != null){
 //            stopTimer.cancel();
 //        }
-        stopHandler.removeCallbacks(null);
+        //stopHandler.removeCallbacks(null);
         reInitialiseChart();
     }
 
@@ -146,7 +148,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     Check for permissions, if not present ask for permission
      */
     public void inititalise(){
-        sampleRate = 5000000; //in microseconds = 1 seconds
+        sampleRate = 100000; //in microseconds = 1 seconds
         wSize = 128;
         lpfAccelerationSmoothing = new LowPassFilter();
         lpfAccelerationSmoothing.setTimeConstant(0.2f);
@@ -175,7 +177,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         if (mSensorManager != null
                 && mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null){
             mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            mSensorManager.registerListener(this, mSensor, SENSOR_DELAY_NORMAL);//sampleRate);
+            mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_UI);//sampleRate);
             return true;
         }
         return false;
@@ -183,12 +185,28 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     public void onSensorChanged(SensorEvent event) {
-        if( magnitudeIndex == wSize){
-            FFTAsynctask fftAsynctask = new FFTAsynctask(wSize);
-            fftAsynctask.execute(magnitudeArray);
-        }
-        if( isTrackingOn ){
-            updateChartData( event );
+        long currTime = System.nanoTime();
+        long diff = currTime - lastUpdate;
+//        Log.d("$$$$currTime: " , String.valueOf(currTime));
+//        Log.d("$$$$Difference in Time: " , String.valueOf(diff));
+        if ( diff > 500000000 && isTrackingOn) {
+            Log.d("###Inside diff: " , String.valueOf(diff));
+            lastUpdate = currTime;
+
+            if (magnitudeIndex == wSize && isTrackingOn && doContinueLessThan10 < 20) {
+                isTrackingOn = false;
+                for (int i = 0; i < magnitudeIndex; i++) {
+                    Log.d("#magnitudeArray[" + String.valueOf(i) + "] :-", String.valueOf(magnitudeArray[i]));
+                }
+                FFTAsynctask fftAsynctask = new FFTAsynctask(wSize);
+                fftAsynctask.execute(magnitudeArray);
+            } else if (magnitudeIndex == wSize && isTrackingOn && doContinueLessThan10 > 19) {
+                HelperClass.showToastMessage("Please place the phone correctly on chest", this);
+                isTrackingOn = false;
+            }
+            if (isTrackingOn) {
+                updateChartData(event);
+            }
         }
     }
 
@@ -199,20 +217,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         @Purpose: To initially remove gravity and remove noise to make a smooth signal
      */
     public float[] filterData(float[] input){
-
         float[] acceleration = new float[3];
-        //System.arraycopy(event.values, 0, acceleration, 0, event.values.length);
-        Log.d("Input:" , String.valueOf(input));
-        //acceleration = input;
         acceleration = lpfAccelerationSmoothing.filter(input);
         acceleration = meanFilter.filter(acceleration);
-//        Log.d("meanFilter:" , String.valueOf(acceleration));
-//        Log.d("Filter 0:" , String.valueOf(acceleration[0]));
-//        Log.d("Filter 1::" , String.valueOf(acceleration[1]));
-//        Log.d("Filter 2:::" , String.valueOf(acceleration[2]));
         return acceleration;
     }
-
 
     /*
         @Purpose: To plot data from accelerometer in grap-view
@@ -227,16 +236,20 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         y = output[1];
         z = output[2];
 
-        magnitude = (float) Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2) + Math.pow(z, 2));
-
-        magnitudeArray[magnitudeIndex] =  magnitude;
-        magnitudeIndex++;
-        axisEntryIndex += 1;
-        xValueList.add( new Entry( axisEntryIndex, x));
-        yValueList.add( new Entry( axisEntryIndex, y));
-        zValueList.add( new Entry( axisEntryIndex, z));
-        magnitudeList.add( new Entry( axisEntryIndex, magnitude));
-        updateChartData();
+        //magnitude = (float) Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2) + Math.pow(z, 2));
+        if( !Float.isNaN(y)){
+            magnitudeArray[magnitudeIndex] =  y;
+            magnitudeIndex++;
+            axisEntryIndex += 1;
+            //xValueList.add( new Entry( axisEntryIndex, x));
+            yValueList.add( new Entry( axisEntryIndex, y));
+            //zValueList.add( new Entry( axisEntryIndex, z));
+            //magnitudeList.add( new Entry( axisEntryIndex, magnitude));
+            updateChartData();
+            if( y < 5 || y > 8){
+                doContinueLessThan10++;
+            }
+        }
     }
 
     /*
@@ -245,45 +258,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     public void updateChartData(){
         LineChart graph = (LineChart) findViewById(R.id.dataGraph);
         LineData lineData = new LineData();
-        lineData.addDataSet(addLineData( xValueList, "X" , Color.RED));
+        //lineData.addDataSet(addLineData( xValueList, "X" , Color.RED));
         lineData.addDataSet(addLineData( yValueList, "Y" , Color.GREEN ));
-        lineData.addDataSet(addLineData( zValueList, "Z" , Color.BLUE));
-        lineData.addDataSet(addLineData( magnitudeList, "Magnitude" , Color.WHITE));
+        //lineData.addDataSet(addLineData( zValueList, "Z" , Color.BLUE));
+        //lineData.addDataSet(addLineData( magnitudeList, "Magnitude" , Color.WHITE));
         graph.setBackgroundColor(Color.DKGRAY);
         graph.setGridBackgroundColor(Color.BLACK);
         graph.setData(lineData);
         graph.notifyDataSetChanged();
         graph.invalidate();
-    }
-    /*
-        @Purpose: To update the FFT chart with new data
-     */
-    public void updateFFTChart(){
-        LineChart fftGraph = (LineChart) findViewById(R.id.fftGraph);
-        List<Entry> magnitudeEntryList = new ArrayList<>();
-        Double maxFreqCount = 0.0;
-        for (int i = 0; i < freqCounts.length; i++){
-            magnitudeEntryList.add( new Entry(i, (float) freqCounts[i]));
-            if( maxFreqCount < freqCounts[i]){
-                maxFreqCount = freqCounts[i];
-            }
-        }
-        LineData lineData = new LineData();
-        lineData.addDataSet(addLineData( magnitudeEntryList, "X" , Color.BLACK));
-        fftGraph.setData(lineData);
-        fftGraph.notifyDataSetChanged();
-        fftGraph.invalidate();
-        fftGraph.setDescription(new Description());
-        reInitialiseChart();
-        Log.d("Max Freq is in Hz: " , String.valueOf(maxFreqCount));
-
-        //Breath rate estimator
-//        Integer bpm;
-//        Integer maxFreqCount1 = Math.ceil((maxFreqCount));
-//        bpm = (Integer) maxFreqCount1 * 60;
-//        Log.d("BPM " , String.valueOf(bpm));
-        TextView bpmTxt = (TextView) findViewById(R.id.breathRateTxt);
-        bpmTxt.setText(String.valueOf(maxFreqCount));
     }
 
     /*
@@ -298,6 +281,48 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         lineDataSet.setDrawCircles(false);
         return lineDataSet;
     }
+    /*
+        @Purpose: To update the FFT chart with new data
+     */
+    public void updateFFTChart(){
+        LineChart fftGraph = (LineChart) findViewById(R.id.fftGraph);
+        List<Entry> magnitudeEntryList = new ArrayList<>();
+        Double maxFreqCount = 0.0, sumOfCounts = 0.0, bpm;
+        int cnt=0;
+        for (int i = 1; i < freqCounts.length; i++){
+            magnitudeEntryList.add( new Entry(i, (float) freqCounts[i]));
+            if( freqCounts[i] >= 0.1 && freqCounts[i] < 0.6){
+                sumOfCounts +=  freqCounts[i];
+                cnt++;
+            }
+
+            if( maxFreqCount < freqCounts[i]){
+                maxFreqCount = freqCounts[i];
+            }
+        }
+        LineData lineData = new LineData();
+        lineData.addDataSet(addLineData( magnitudeEntryList, "X" , Color.BLACK));
+        fftGraph.setData(lineData);
+        fftGraph.notifyDataSetChanged();
+        fftGraph.invalidate();
+        fftGraph.setDescription(new Description());
+        reInitialiseChart();
+        bpm = sumOfCounts/cnt;
+        bpm = 60*bpm;
+        Log.d("Breath Rate is: " , String.valueOf(bpm));
+
+        if( maxFreqCount == 0.0){
+            HelperClass.showToastMessage("Please start the process again!!!", this);
+        }
+
+        //Breath rate estimator
+//        Integer bpm;
+//        Integer maxFreqCount1 = Math.ceil((maxFreqCount));
+//        bpm = (Integer) maxFreqCount1 * 60;
+//        Log.d("BPM " , String.valueOf(bpm));
+        TextView bpmTxt = (TextView) findViewById(R.id.breathRateTxt);
+        bpmTxt.setText(String.valueOf(bpm));
+    }
 
     //When user moves out of the app, stop unregister the sensor
     @Override
@@ -311,7 +336,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         super.onResume();
         mSensorManager.registerListener(MainActivity.this, mSensor, sampleRate);
     }
-
 
     /**
      * Implements the fft functionality as an async task
@@ -355,43 +379,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         @Override
         protected void onPostExecute(double[] values) {
             //hand over values to global variable after background task is finished
+//            Log.d("##values.length: ", String.valueOf(values.length));
+            for(int i=0; i< values.length; i++){
+                Log.d("values[" + String.valueOf(i) +"] :-", String.valueOf(values[i]));
+            }
             freqCounts = values;
             updateFFTChart();
         }
     }
-
-//    public float[] filterData(float[] input)
-//    {
-//        timestamp = System.nanoTime();
-//        float dt;
-//        // Find the sample period (between updates).
-//        // Convert from nanoseconds to seconds
-//        dt = 1 / (count / ((timestamp - timestampOld) / 1000000000.0f));
-//
-//        count++;
-//
-//        //alpha = (float)0.5;
-//
-//        alpha = timeConstant / (timeConstant + dt);
-//        Log.d("alpha" , String.valueOf(alpha));
-//
-//        // Calculate alpha
-//        //alpha = 0.1f;
-//
-//        gravity[0] = alpha * gravity[0] + (1 - alpha) * input[0];
-//        gravity[1] = alpha * gravity[1] + (1 - alpha) * input[1];
-//        gravity[2] = alpha * gravity[2] + (1 - alpha) * input[2];
-//        Log.d("Gravity 1" , String.valueOf(gravity[0]));
-//        Log.d("Gravity 2" , String.valueOf(gravity[1]));
-//        Log.d("Gravity 3" , String.valueOf(gravity[2]));
-//
-//        linearAcceleration[0] = input[0] - gravity[0];
-//        linearAcceleration[1] = input[1] - gravity[1];
-//        linearAcceleration[2] = input[2] - gravity[2];
-//
-////        linearAcceleration[0] = input[0];
-////        linearAcceleration[1] = input[1];
-////        linearAcceleration[2] = input[2];
-//        return linearAcceleration;
-//    }
 }
