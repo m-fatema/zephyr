@@ -1,5 +1,6 @@
 package finalproject.mis.com.zephyr;
 
+import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 
@@ -21,6 +22,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.github.mikephil.charting.charts.LineChart;
 import com.github.mikephil.charting.components.Description;
@@ -81,6 +83,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         btnStop.setEnabled(false);
         isTrackingOn = false;
         inititalise();
+        storagePermissionStatus();
     }
 
     public void startTracking( View view){
@@ -96,40 +99,42 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         btnStart.setEnabled(false);
         btnStop.setEnabled(true);
         isTrackingOn = true;
-
-//        new Handler().postDelayed(new Runnable(){
-//            @Override
-//            public void run() {
-//                isTrackingOn = true;
-//            }
-//        }, 1000);
-
-//        stopTimer = new Timer();
-//        stopTimer.schedule(new TimerTask() {
-//            @Override
-//            public void run() {
-//                reInitialiseChart();
-//            }
-//        }, 15000);
-
-//        stopHandler = new Handler();
-//        stopHandler.postDelayed(new Runnable(){
-//
-//            @Override
-//            public void run() {
-//                // This method will be executed once the timer is over
-//                Log.d("In stopHandler Run" , "****************");
-//                reInitialiseChart();
-//            }
-//        },60000);// set time as per your requirement
     }
 
+    public Boolean storagePermissionStatus(){
 
+        int RequestCheckResult = ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE);
+
+        if (RequestCheckResult != PackageManager.PERMISSION_GRANTED){
+
+            if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE))
+            {
+
+                Toast.makeText(MainActivity.this,"Allow Access to Storage", Toast.LENGTH_LONG).show();
+                return false;
+
+            } else {
+
+                ActivityCompat.requestPermissions(MainActivity.this,new String[]{
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
+
+            }
+        }
+        return true;
+    }
+
+    public void OverNightTracking( View view){
+        HelperClass helper = new HelperClass();
+        if(storagePermissionStatus()){
+            helper.OverNightTracking();
+        }
+    }
+
+    /*
+        @Purpose: Stop tracking of sensor data
+     */
     public void stopTracking( View view){
-//        if( stopTimer != null){
-//            stopTimer.cancel();
-//        }
-        //stopHandler.removeCallbacks(null);
         reInitialiseChart();
     }
 
@@ -148,7 +153,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     Check for permissions, if not present ask for permission
      */
     public void inititalise(){
-        sampleRate = 100000; //in microseconds = 1 seconds
+        //sampleRate = 100000; //in microseconds = 1 seconds
         wSize = 128;
         lpfAccelerationSmoothing = new LowPassFilter();
         lpfAccelerationSmoothing.setTimeConstant(0.2f);
@@ -162,7 +167,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
      */
     public void getSensorData(){
         boolean isSucess = initialiseSensors();
-        Log.d("@@@Is Sucess: " , String.valueOf(isSucess));
+        //Log.d("@@@Is Sucess: " , String.valueOf(isSucess));
         if( !isSucess ){
             HelperClass.showToastMessage("The device sensor could not be acessed" +
                     " or there is no accelerometer present on device " , this);
@@ -177,7 +182,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         if (mSensorManager != null
                 && mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null){
             mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_UI);//sampleRate);
+            mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_UI);
             return true;
         }
         return false;
@@ -190,7 +195,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 //        Log.d("$$$$currTime: " , String.valueOf(currTime));
 //        Log.d("$$$$Difference in Time: " , String.valueOf(diff));
         if ( diff > 500000000 && isTrackingOn) {
-            Log.d("###Inside diff: " , String.valueOf(diff));
+            //Log.d("###Inside diff: " , String.valueOf(diff));
             lastUpdate = currTime;
 
             if (magnitudeIndex == wSize && isTrackingOn && doContinueLessThan10 < 20) {
@@ -200,7 +205,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 }
                 FFTAsynctask fftAsynctask = new FFTAsynctask(wSize);
                 fftAsynctask.execute(magnitudeArray);
-            } else if (magnitudeIndex == wSize && isTrackingOn && doContinueLessThan10 > 19) {
+            } else if ( isTrackingOn && doContinueLessThan10 > 19) {
                 HelperClass.showToastMessage("Please place the phone correctly on chest", this);
                 isTrackingOn = false;
             }
@@ -237,18 +242,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         z = output[2];
 
         //magnitude = (float) Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2) + Math.pow(z, 2));
-        if( !Float.isNaN(y)){
-            magnitudeArray[magnitudeIndex] =  y;
+        if( !Float.isNaN(y) &&( y > 5 && y < 10)) {
+            magnitudeArray[magnitudeIndex] = y;
             magnitudeIndex++;
             axisEntryIndex += 1;
             //xValueList.add( new Entry( axisEntryIndex, x));
-            yValueList.add( new Entry( axisEntryIndex, y));
+            yValueList.add(new Entry(axisEntryIndex, y));
             //zValueList.add( new Entry( axisEntryIndex, z));
             //magnitudeList.add( new Entry( axisEntryIndex, magnitude));
             updateChartData();
-            if( y < 5 || y > 8){
-                doContinueLessThan10++;
-            }
+        }
+        else if( y < 5 || y > 10){
+            doContinueLessThan10++;
         }
     }
 
@@ -315,11 +320,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             HelperClass.showToastMessage("Please start the process again!!!", this);
         }
 
-        //Breath rate estimator
-//        Integer bpm;
-//        Integer maxFreqCount1 = Math.ceil((maxFreqCount));
-//        bpm = (Integer) maxFreqCount1 * 60;
-//        Log.d("BPM " , String.valueOf(bpm));
         TextView bpmTxt = (TextView) findViewById(R.id.breathRateTxt);
         bpmTxt.setText(String.valueOf(bpm));
     }
@@ -334,7 +334,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @Override
     protected void onResume() {
         super.onResume();
-        mSensorManager.registerListener(MainActivity.this, mSensor, sampleRate);
+        mSensorManager.registerListener(MainActivity.this, mSensor, SensorManager.SENSOR_DELAY_UI);
     }
 
     /**

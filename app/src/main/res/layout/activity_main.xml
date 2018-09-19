@@ -26,6 +26,13 @@
                 android:layout_height="wrap_content"
                 android:onClick="stopTracking"
                 android:text="Stop" />
+
+            <Button
+                android:id="@+id/nightTrack"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:onClick="OverNightTracking"
+                android:text="Track Overnight" />
         </LinearLayout>
 
         <LinearLayout
@@ -77,5 +84,6 @@
                     android:layout_height="200dp" />
             </LinearLayout>
         </ScrollView>
+
     </LinearLayout>
 </android.support.constraint.ConstraintLayout>
