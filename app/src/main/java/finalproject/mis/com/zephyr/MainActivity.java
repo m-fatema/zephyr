@@ -1,5 +1,6 @@
 package finalproject.mis.com.zephyr;
 
+import android.os.Environment;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -32,6 +33,7 @@ import com.github.mikephil.charting.data.LineDataSet;
 import com.kircherelectronics.fsensor.filter.averaging.LowPassFilter;
 import com.kircherelectronics.fsensor.filter.averaging.MeanFilter;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -51,10 +53,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private List<Entry> yValueList;
     private List<Entry> zValueList;
     private List<Entry> magnitudeList;
-    private int sampleRate, wSize, axisEntryIndex, magnitudeIndex,doContinueLessThan10;
+    private int sampleRate, wSize, axisEntryIndex, magnitudeIndex,doContinueLessThan10, overNightDataTrack;
     private double[] magnitudeArray;
-    private Boolean isTrackingOn;
-    private long lastUpdate = 0;
+    private Boolean isTrackingOn,trackOvernight;
+    private long lastUpdate = 0, lastUpdateOverNight = 0;
+    HelperClass helper;
+    String oveNightDataFilePath;
     Button btnStart, btnStop;
     Timer stopTimer;
     Handler stopHandler;
@@ -82,6 +86,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         btnStop = (Button)findViewById(R.id.stopBtn);
         btnStop.setEnabled(false);
         isTrackingOn = false;
+        trackOvernight = false;
+        oveNightDataFilePath="";
+        overNightDataTrack=0;
         inititalise();
         storagePermissionStatus();
     }
@@ -125,9 +132,51 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     public void OverNightTracking( View view){
-        HelperClass helper = new HelperClass();
+        helper = new HelperClass();
         if(storagePermissionStatus()){
-            helper.OverNightTracking();
+            trackOvernight = true;
+            isTrackingOn = false;
+            oveNightDataFilePath = helper.getFilePath();
+            helper.clearCSVFile(oveNightDataFilePath,"x,y,z\n");
+            findViewById(R.id.overNightTrackBtn).setEnabled(false);
+
+        }
+    }
+
+    public void collectOvernightData(SensorEvent event){
+        float x,y,z;
+        float[] acceleration;
+        float[] input = { event.values[0], event.values[1], event.values[2]};
+        acceleration = lpfAccelerationSmoothing.filter(input);
+        acceleration = meanFilter.filter(acceleration);
+        x = acceleration[0];
+        y = acceleration[1];
+        z = acceleration[2];
+
+        if( !Float.isNaN(x) && !Float.isNaN(y) && !Float.isNaN(z) ) {
+
+            if (oveNightDataFilePath != "" && overNightDataTrack < 12288) {
+
+                String sensorData = String.valueOf(x) + ","
+                        + String.valueOf(y) + ","
+                        + String.valueOf(z) + "\n";
+                overNightDataTrack++;
+                helper.writeToCSVFile(oveNightDataFilePath, sensorData);
+
+            } else if (oveNightDataFilePath != "" && overNightDataTrack == 12288) {
+                System.out.println("trackOvernight" + trackOvernight);
+                trackOvernight = false;
+                System.out.println("trackOvernight" + trackOvernight);
+                helper.readCSVFile(oveNightDataFilePath);
+                System.out.println("@@@@Inside Read File@@@@@@");
+                findViewById(R.id.overNightTrackBtn).setEnabled(true);
+
+            } else if (oveNightDataFilePath == "") {
+
+                Toast.makeText(MainActivity.this, "There was a problem in accessing the CSV file." +
+                        " Please delete the folde Zephry and try again. Thank You", Toast.LENGTH_LONG).show();
+
+            }
         }
     }
 
@@ -192,17 +241,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     public void onSensorChanged(SensorEvent event) {
         long currTime = System.nanoTime();
         long diff = currTime - lastUpdate;
-//        Log.d("$$$$currTime: " , String.valueOf(currTime));
-//        Log.d("$$$$Difference in Time: " , String.valueOf(diff));
-        if ( diff > 500000000 && isTrackingOn) {
-            //Log.d("###Inside diff: " , String.valueOf(diff));
+        if( trackOvernight == true && currTime - lastUpdateOverNight > 1000000000 ){
+            lastUpdateOverNight = currTime;
+            collectOvernightData(event);
+        }
+        else if ( diff > 500000000 && isTrackingOn) {
             lastUpdate = currTime;
 
             if (magnitudeIndex == wSize && isTrackingOn && doContinueLessThan10 < 20) {
                 isTrackingOn = false;
-                for (int i = 0; i < magnitudeIndex; i++) {
-                    Log.d("#magnitudeArray[" + String.valueOf(i) + "] :-", String.valueOf(magnitudeArray[i]));
-                }
                 FFTAsynctask fftAsynctask = new FFTAsynctask(wSize);
                 fftAsynctask.execute(magnitudeArray);
             } else if ( isTrackingOn && doContinueLessThan10 > 19) {
@@ -325,17 +372,17 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     //When user moves out of the app, stop unregister the sensor
-    @Override
-    public void onPause() {
-        super.onPause();  // Always call the superclass method first
-        mSensorManager.unregisterListener(MainActivity.this);
-    }
+//    @Override
+//    public void onPause() {
+//        super.onPause();  // Always call the superclass method first
+//        mSensorManager.unregisterListener(MainActivity.this);
+//    }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        mSensorManager.registerListener(MainActivity.this, mSensor, SensorManager.SENSOR_DELAY_UI);
-    }
+//    @Override
+//    protected void onResume() {
+//        super.onResume();
+//        mSensorManager.registerListener(MainActivity.this, mSensor, SensorManager.SENSOR_DELAY_UI);
+//    }
 
     /**
      * Implements the fft functionality as an async task
