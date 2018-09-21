@@ -1,6 +1,7 @@
 package finalproject.mis.com.zephyr;
 
 import android.os.Environment;
+import android.os.PowerManager;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -59,6 +60,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private long lastUpdate = 0, lastUpdateOverNight = 0;
     HelperClass helper;
     String oveNightDataFilePath;
+    PowerManager.WakeLock wakeLock;
     Button btnStart, btnStop;
     Timer stopTimer;
     Handler stopHandler;
@@ -139,7 +141,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             oveNightDataFilePath = helper.getFilePath();
             helper.clearCSVFile(oveNightDataFilePath,"x,y,z\n");
             findViewById(R.id.overNightTrackBtn).setEnabled(false);
-
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Over Night Breath Estimation");
+            wakeLock.acquire();
         }
     }
 
@@ -170,6 +174,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 helper.readCSVFile(oveNightDataFilePath);
                 System.out.println("@@@@Inside Read File@@@@@@");
                 findViewById(R.id.overNightTrackBtn).setEnabled(true);
+                wakeLock.release();
 
             } else if (oveNightDataFilePath == "") {
 
