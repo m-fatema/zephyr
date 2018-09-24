@@ -141,9 +141,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             oveNightDataFilePath = helper.getFilePath();
             helper.clearCSVFile(oveNightDataFilePath,"x,y,z\n");
             findViewById(R.id.overNightTrackBtn).setEnabled(false);
-            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Over Night Breath Estimation");
-            wakeLock.acquire();
+//            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+//            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Over Night Breath Estimation");
+//            wakeLock.acquire();
+            //starting service
+            startService(new Intent(this, MyService.class));
         }
     }
 
@@ -164,17 +166,20 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 String sensorData = String.valueOf(x) + ","
                         + String.valueOf(y) + ","
                         + String.valueOf(z) + "\n";
+                System.out.println("####Count value - overNightDataTrack:" + overNightDataTrack);
                 overNightDataTrack++;
                 helper.writeToCSVFile(oveNightDataFilePath, sensorData);
 
             } else if (oveNightDataFilePath != "" && overNightDataTrack == 12288) {
-                System.out.println("trackOvernight" + trackOvernight);
+                System.out.println("@@@@trackOvernight" + trackOvernight);
                 trackOvernight = false;
-                System.out.println("trackOvernight" + trackOvernight);
+                System.out.println("@@@@trackOvernight" + trackOvernight);
                 helper.readCSVFile(oveNightDataFilePath);
                 System.out.println("@@@@Inside Read File@@@@@@");
                 findViewById(R.id.overNightTrackBtn).setEnabled(true);
-                wakeLock.release();
+                //wakeLock.release();
+                //stopping service
+                stopService(new Intent(this, MyService.class));
 
             } else if (oveNightDataFilePath == "") {
 

@@ -18,6 +18,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- defining the service class here -->
+        <service android:name=".MyService" />
     </application>
 
 </manifest>
