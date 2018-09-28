@@ -1,7 +1,10 @@
 package finalproject.mis.com.zephyr;
 
+import android.app.Service;
 import android.os.Environment;
+import android.os.IBinder;
 import android.os.PowerManager;
+import android.support.annotation.Nullable;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -35,6 +38,7 @@ import com.kircherelectronics.fsensor.filter.averaging.LowPassFilter;
 import com.kircherelectronics.fsensor.filter.averaging.MeanFilter;
 
 import java.io.File;
+import java.security.Provider;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -50,35 +54,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private SensorManager mSensorManager;
     private Sensor mSensor;
-    private List<Entry> xValueList;
     private List<Entry> yValueList;
-    private List<Entry> zValueList;
-    private List<Entry> magnitudeList;
-    private int sampleRate, wSize, axisEntryIndex, magnitudeIndex,doContinueLessThan10, overNightDataTrack;
+    private int wSize, axisEntryIndex, magnitudeIndex,doContinueLessThan10;
     private double[] magnitudeArray;
-    private Boolean isTrackingOn,trackOvernight;
-    private long lastUpdate = 0, lastUpdateOverNight = 0;
+    private Boolean isTrackingOn;
+    private long lastUpdate = 0;
     HelperClass helper;
-    String oveNightDataFilePath;
-    PowerManager.WakeLock wakeLock;
     Button btnStart, btnStop;
-    Timer stopTimer;
-    Handler stopHandler;
-
-    private float[] linearAcceleration = new float[]{ 0, 0, 0 };
 
     //------------------------------------KalebKE/FSensor-----------------------------------------------
     private MeanFilter meanFilter;
     private LowPassFilter lpfAccelerationSmoothing;
     //------------------------------------KalebKE/FSensor-----------------------------------------------
-
-//    private int count = 0;
-//    static final float timeConstant = 0.18f;
-//    private float alpha;
-//    private float timestamp = System.nanoTime();
-//    private float timestampOld = System.nanoTime();
-//    private float[] gravity = new float[]{ 0, 0, 0 };
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -88,28 +75,28 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         btnStop = (Button)findViewById(R.id.stopBtn);
         btnStop.setEnabled(false);
         isTrackingOn = false;
-        trackOvernight = false;
-        oveNightDataFilePath="";
-        overNightDataTrack=0;
         inititalise();
         storagePermissionStatus();
     }
-
+    /*
+        @Purpose: Start tracking of sensor data and calculate the breathing rate
+     */
     public void startTracking( View view){
         axisEntryIndex = 0;
         magnitudeIndex = 0;
         doContinueLessThan10 = 0;
-        xValueList = new ArrayList<>();
         yValueList = new ArrayList<>();
-        zValueList = new ArrayList<>();
-        magnitudeList = new ArrayList<>();
         magnitudeArray = new double[1000];
-
         btnStart.setEnabled(false);
         btnStop.setEnabled(true);
+        mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_UI);
         isTrackingOn = true;
     }
 
+    /*
+        @Purpose: To request permission of storage for storing the
+         csv file which stores the overnight data
+     */
     public Boolean storagePermissionStatus(){
 
         int RequestCheckResult = ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE);
@@ -133,70 +120,29 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         return true;
     }
 
+    /*
+        @Purpose: Store the breathing data for a longer time and try to calculate the breathing rate from it
+     */
     public void OverNightTracking( View view){
         helper = new HelperClass();
         if(storagePermissionStatus()){
-            trackOvernight = true;
             isTrackingOn = false;
-            oveNightDataFilePath = helper.getFilePath();
-            helper.clearCSVFile(oveNightDataFilePath,"x,y,z\n");
-            findViewById(R.id.overNightTrackBtn).setEnabled(false);
-//            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-//            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Over Night Breath Estimation");
-//            wakeLock.acquire();
+            //findViewById(R.id.overNightTrackBtn).setEnabled(false);
             //starting service
             startService(new Intent(this, MyService.class));
         }
     }
 
-    public void collectOvernightData(SensorEvent event){
-        float x,y,z;
-        float[] acceleration;
-        float[] input = { event.values[0], event.values[1], event.values[2]};
-        acceleration = lpfAccelerationSmoothing.filter(input);
-        acceleration = meanFilter.filter(acceleration);
-        x = acceleration[0];
-        y = acceleration[1];
-        z = acceleration[2];
-
-        if( !Float.isNaN(x) && !Float.isNaN(y) && !Float.isNaN(z) ) {
-
-            if (oveNightDataFilePath != "" && overNightDataTrack < 12288) {
-
-                String sensorData = String.valueOf(x) + ","
-                        + String.valueOf(y) + ","
-                        + String.valueOf(z) + "\n";
-                System.out.println("####Count value - overNightDataTrack:" + overNightDataTrack);
-                overNightDataTrack++;
-                helper.writeToCSVFile(oveNightDataFilePath, sensorData);
-
-            } else if (oveNightDataFilePath != "" && overNightDataTrack == 12288) {
-                System.out.println("@@@@trackOvernight" + trackOvernight);
-                trackOvernight = false;
-                System.out.println("@@@@trackOvernight" + trackOvernight);
-                helper.readCSVFile(oveNightDataFilePath);
-                System.out.println("@@@@Inside Read File@@@@@@");
-                findViewById(R.id.overNightTrackBtn).setEnabled(true);
-                //wakeLock.release();
-                //stopping service
-                stopService(new Intent(this, MyService.class));
-
-            } else if (oveNightDataFilePath == "") {
-
-                Toast.makeText(MainActivity.this, "There was a problem in accessing the CSV file." +
-                        " Please delete the folde Zephry and try again. Thank You", Toast.LENGTH_LONG).show();
-
-            }
-        }
-    }
 
     /*
-        @Purpose: Stop tracking of sensor data
+        @Purpose: Stop tracking of sensor data and re-initialises all the counters
      */
     public void stopTracking( View view){
         reInitialiseChart();
     }
-
+    /*
+        @Purpose: Re-initialise all the couters when tracking of data is stopped
+     */
     public void reInitialiseChart(){
         isTrackingOn = false;
         btnStop.setEnabled(false);
@@ -205,6 +151,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         LineData lineData = new LineData();
         graph.notifyDataSetChanged();
         graph.setData(lineData);
+        mSensorManager.unregisterListener(MainActivity.this);
     }
 
     /*
@@ -212,7 +159,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     Check for permissions, if not present ask for permission
      */
     public void inititalise(){
-        //sampleRate = 100000; //in microseconds = 1 seconds
         wSize = 128;
         lpfAccelerationSmoothing = new LowPassFilter();
         lpfAccelerationSmoothing.setTimeConstant(0.2f);
@@ -226,7 +172,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
      */
     public void getSensorData(){
         boolean isSucess = initialiseSensors();
-        //Log.d("@@@Is Sucess: " , String.valueOf(isSucess));
         if( !isSucess ){
             HelperClass.showToastMessage("The device sensor could not be acessed" +
                     " or there is no accelerometer present on device " , this);
@@ -241,7 +186,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         if (mSensorManager != null
                 && mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) != null){
             mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_UI);
+            //mSensorManager.registerListener(this, mSensor, SensorManager.SENSOR_DELAY_UI);
             return true;
         }
         return false;
@@ -251,11 +196,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     public void onSensorChanged(SensorEvent event) {
         long currTime = System.nanoTime();
         long diff = currTime - lastUpdate;
-        if( trackOvernight == true && currTime - lastUpdateOverNight > 1000000000 ){
-            lastUpdateOverNight = currTime;
-            collectOvernightData(event);
-        }
-        else if ( diff > 500000000 && isTrackingOn) {
+        if ( diff > 500000000 && isTrackingOn) {
             lastUpdate = currTime;
 
             if (magnitudeIndex == wSize && isTrackingOn && doContinueLessThan10 < 20) {
@@ -263,8 +204,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 FFTAsynctask fftAsynctask = new FFTAsynctask(wSize);
                 fftAsynctask.execute(magnitudeArray);
             } else if ( isTrackingOn && doContinueLessThan10 > 19) {
-                HelperClass.showToastMessage("Please place the phone correctly on chest", this);
+                HelperClass.showToastMessage("Please place the phone correctly on chest and start again", this);
                 isTrackingOn = false;
+                btnStop.setEnabled(false);
+                btnStart.setEnabled(true);
             }
             if (isTrackingOn) {
                 updateChartData(event);
@@ -279,7 +222,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         @Purpose: To initially remove gravity and remove noise to make a smooth signal
      */
     public float[] filterData(float[] input){
-        float[] acceleration = new float[3];
+        float[] acceleration;
         acceleration = lpfAccelerationSmoothing.filter(input);
         acceleration = meanFilter.filter(acceleration);
         return acceleration;
@@ -290,23 +233,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
      */
     public void updateChartData( SensorEvent event ){
 
-        float x,y,z,magnitude;
+        float y;
 
         float[] input = { event.values[0], event.values[1], event.values[2]};
         float output[] = filterData(input);
-        x = output[0];
         y = output[1];
-        z = output[2];
-
-        //magnitude = (float) Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2) + Math.pow(z, 2));
         if( !Float.isNaN(y) &&( y > 5 && y < 10)) {
             magnitudeArray[magnitudeIndex] = y;
             magnitudeIndex++;
             axisEntryIndex += 1;
-            //xValueList.add( new Entry( axisEntryIndex, x));
             yValueList.add(new Entry(axisEntryIndex, y));
-            //zValueList.add( new Entry( axisEntryIndex, z));
-            //magnitudeList.add( new Entry( axisEntryIndex, magnitude));
             updateChartData();
         }
         else if( y < 5 || y > 10){
@@ -370,6 +306,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         fftGraph.setDescription(new Description());
         reInitialiseChart();
         bpm = sumOfCounts/cnt;
+        Log.d("sumOfCounts is: " , String.valueOf(sumOfCounts));
         bpm = 60*bpm;
         Log.d("Breath Rate is: " , String.valueOf(bpm));
 
@@ -436,7 +373,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         @Override
         protected void onPostExecute(double[] values) {
             //hand over values to global variable after background task is finished
-//            Log.d("##values.length: ", String.valueOf(values.length));
             for(int i=0; i< values.length; i++){
                 Log.d("values[" + String.valueOf(i) +"] :-", String.valueOf(values[i]));
             }

@@ -48,7 +48,6 @@ public class HelperClass extends MainActivity {
     public void clearCSVFile( String filename, String data){
         try{
             FileWriter fw = new FileWriter(filename,false);
-            System.out.println("Data to write:" + data);
             fw.append(data);
             fw.flush();
             fw.close();
