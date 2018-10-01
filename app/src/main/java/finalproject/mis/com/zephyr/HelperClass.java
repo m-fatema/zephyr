@@ -27,6 +27,12 @@ public class HelperClass extends MainActivity {
         toast.show();
     }
 
+    public static void showShortToastMessage(String message, Context context){
+        Toast toast = Toast.makeText(context, message, Toast.LENGTH_SHORT);
+        toast.setGravity(Gravity.CENTER, 0 ,0);
+        toast.show();
+    }
+
     //File store data for over night Tracking
     public String getFilePath() {
         String state = Environment.getExternalStorageState();

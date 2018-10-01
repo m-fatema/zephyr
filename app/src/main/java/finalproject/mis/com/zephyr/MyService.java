@@ -13,6 +13,7 @@ import android.os.IBinder;
 import android.support.annotation.Nullable;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
+import android.widget.Button;
 
 import com.kircherelectronics.fsensor.filter.averaging.LowPassFilter;
 import com.kircherelectronics.fsensor.filter.averaging.MeanFilter;
@@ -29,6 +30,7 @@ public class MyService extends Service implements SensorEventListener {
     private MeanFilter meanFilter;
     private LowPassFilter lpfAccelerationSmoothing;
     NotificationManagerCompat notificationManager;
+    Button overNightTracking;
 
     @Nullable
     @Override
@@ -38,6 +40,8 @@ public class MyService extends Service implements SensorEventListener {
 
     @Override
     public void onCreate (){
+
+        //overNightTracking = (Button) MainActivity.findViewById(R.id.stopBtn);
         trackOvernight = true;
         overNightDataTrack = 0;
         oveNightDataFilePath="";
@@ -52,9 +56,7 @@ public class MyService extends Service implements SensorEventListener {
         NotificationCompat.Builder mBuilder = new NotificationCompat.Builder(this, "123")
                 .setSmallIcon(R.drawable.ic_stat_name)
                 .setContentTitle("Zephry")
-                .setContentText("Collecting overnight data to estimate breath")
-                .setStyle(new NotificationCompat.BigTextStyle()
-                        .bigText("Much longer text that cannot fit one line..."))
+                .setContentText("Collecting overnight data")
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT);
         notificationManager = NotificationManagerCompat.from(this);
 
@@ -125,7 +127,7 @@ public class MyService extends Service implements SensorEventListener {
 
         if( !Float.isNaN(x) && !Float.isNaN(y) && !Float.isNaN(z) ) {
 
-            if (!oveNightDataFilePath.equals("") && overNightDataTrack < 12288) {//12288
+            if (!oveNightDataFilePath.equals("") && overNightDataTrack < 10800) {//10800
 
 //                String sensorData = String.valueOf(x) + ","
 //                        + String.valueOf(y) + ","
@@ -135,15 +137,17 @@ public class MyService extends Service implements SensorEventListener {
                         + String.format ("%.2f", z) + "\n";
                 System.out.println("####Count value - overNightDataTrack:" + overNightDataTrack);
                 overNightDataTrack++;
+                //HelperClass.showShortToastMessage("Processing!!!", this);
                 helper.writeToCSVFile(oveNightDataFilePath, sensorData);
 
 
-            } else if ( !oveNightDataFilePath.equals("") && overNightDataTrack == 12288) { //12288
+            } else if ( !oveNightDataFilePath.equals("") && overNightDataTrack == 10800) { //10800
                 trackOvernight = false;
                 helper.readCSVFile(oveNightDataFilePath);
                 //stopping service
                 mSensorManager.unregisterListener(MyService.this);
                 stopService(new Intent(this, MyService.class));
+                //findViewById(R.id.overNightTrackBtn).setEnabled(false);
                 //stopSelf();
                 HelperClass.showToastMessage("Processed.................", this);
                 notificationManager.cancel(1234);

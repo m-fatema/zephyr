@@ -127,7 +127,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         helper = new HelperClass();
         if(storagePermissionStatus()){
             isTrackingOn = false;
-            //findViewById(R.id.overNightTrackBtn).setEnabled(false);
+            findViewById(R.id.overNightTrackBtn).setEnabled(false);
             //starting service
             startService(new Intent(this, MyService.class));
         }
@@ -308,14 +308,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         bpm = sumOfCounts/cnt;
         Log.d("sumOfCounts is: " , String.valueOf(sumOfCounts));
         bpm = 60*bpm;
-        Log.d("Breath Rate is: " , String.valueOf(bpm));
+        long bpmInt = Math.round(bpm);
+        Log.d("Breath Rate is: " , String.valueOf(bpmInt));
 
         if( maxFreqCount == 0.0){
             HelperClass.showToastMessage("Please start the process again!!!", this);
         }
 
         TextView bpmTxt = (TextView) findViewById(R.id.breathRateTxt);
-        bpmTxt.setText(String.valueOf(bpm));
+        bpmTxt.setText(String.valueOf(bpmInt));
     }
 
     //When user moves out of the app, stop unregister the sensor
